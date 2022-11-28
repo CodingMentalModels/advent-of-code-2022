@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read, path::Path};
 
-const INPUT_PATH_HEAD: &str = "C:/Users/cmsdu/repos/advent-of-code-2022/input/input.txt";
+const INPUT_PATH_HEAD: &str = "C:/Users/cmsdu/repos/advent-of-code-2022/input/";
 
 pub struct InputParser;
 
@@ -61,7 +61,7 @@ mod test_input {
     fn test_input_parses_input() {
         
         let parser = InputParser::new();
-        let parsed = parser.parse_as_i32("input_001.txt").unwrap();
+        let parsed = parser.parse_as_i32("input_i32_test.txt").unwrap();
 
         assert_eq!(parsed.len(), 2000);
     }
@@ -69,7 +69,7 @@ mod test_input {
     #[test]
     fn test_input_parses_binary() {
                 
-        let input = InputParser::new().parse_as_binary("input_003.txt").unwrap();
+        let input = InputParser::new().parse_as_binary("input_binary_test.txt").unwrap();
         let shortened_input = input.iter().take(3).map(|s| *s).collect::<Vec<u32>>();
 
         // 111100101100
