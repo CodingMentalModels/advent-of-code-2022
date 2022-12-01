@@ -43,12 +43,22 @@ impl InputParser {
     }
 
     pub fn parse_as_string(&self, filepath: &str) -> Result<Vec<String>, String> {
+        let contents = self.parse_to_single_string(filepath)?;
+        Ok(contents.lines().map(|line| line.to_string()).collect())
+    }
+
+    pub fn parse_as_string_chunks(&self, filepath: &str, delimiter: &str) -> Result<Vec<Vec<String>>, String> {
+        let contents = self.parse_to_single_string(filepath)?;
+        Ok(contents.split(delimiter).map(|x| x.split("\n").map(|s| s.to_string()).collect::<Vec<_>>()).collect())
+    }
+    
+    pub fn parse_to_single_string(&self, filepath: &str) -> Result<String, String> {
         let full_path_string = format!("{}{}", INPUT_PATH_HEAD, filepath);
         let full_path = Path::new(&full_path_string);
         let mut file = File::open(full_path).map_err(|_| "Unable to open file.".to_string())?;
         let mut contents = String::new();
         file.read_to_string(&mut contents).map_err(|_| "Unable to read file.".to_string())?;
-        Ok(contents.lines().map(|line| line.to_string()).collect())
+        return Ok(contents);
     }
 }
 
