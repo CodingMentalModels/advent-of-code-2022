@@ -7,7 +7,11 @@ pub fn solve_problem_01a(input: Vec<Vec<String>>) -> usize {
 }
 
 fn solve_problem_01b(input: Vec<Vec<String>>) -> usize {
-    unimplemented!();
+    let mut calorie_sums: Vec<usize> = input.into_iter().map(
+        |chunk| chunk.into_iter().map(|s| s.parse::<usize>().expect("All strings should be valid numbers.")).sum()
+    ).collect::<Vec<_>>();
+    calorie_sums.sort();
+    calorie_sums.into_iter().rev().take(3).sum()
 }
 
 #[cfg(test)]
@@ -18,7 +22,7 @@ mod test_problem_01 {
     #[test]
     fn test_problem_01a_passes() {
         
-        let input = InputParser::new().parse_as_string_chunks("input_01.txt", "\r\n\r\n").unwrap();
+        let input = InputParser::new().parse_as_string_chunks("input_01.txt", "\n\n").unwrap();
         let shorted_input = input.iter().take(2).map(|i| i.clone()).collect();
 
         assert_eq!(shorted_input, 
@@ -52,22 +56,22 @@ mod test_problem_01 {
                 ]
             ]
         );
-        assert_eq!(solve_problem_01a(shorted_input), 0);
+        assert_eq!(solve_problem_01a(shorted_input), 40386);
 
         let answer = solve_problem_01a(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 67622);
     }
     
     #[test]
     fn test_problem_01b_passes() {
-        let input = InputParser::new().parse_as_string_chunks("input_01.txt", "\r\n\r\n").unwrap();
+        let input = InputParser::new().parse_as_string_chunks("input_01.txt", "\n\n").unwrap();
 
-        let shorted_input = input.iter().take(10).map(|i| i.clone()).collect();
+        let shorted_input = input.iter().take(4).map(|i| i.clone()).collect();
 
-        assert_eq!(solve_problem_01b(shorted_input), 0);
+        assert_eq!(solve_problem_01b(shorted_input), 147861);
 
         let answer = solve_problem_01b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 201491);
     }
 
 }
