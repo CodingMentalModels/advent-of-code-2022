@@ -56,17 +56,17 @@ mod test_problem_03 {
         ];
         assert_eq!(solve_problem_03a(example), 157);
         
-        // let shortened_input = input.iter().take(3).map(|i| i.clone()).collect();
+        let shortened_input = input.iter().take(3).map(|i| i.clone()).collect();
 
-        // // rNZNWvMZZmDDmwqNdZrWTqhJMhhgzggBhzBJBchQzzJJ => q => 17
-        // // pHlSVbVbFHgHBzzhQHqg => H => 26 + 8 = 34
-        // // nVsqGpbbtDtTNmrmfZ => t => 20
+        // rNZNWvMZZmDDmwqNdZrWTqhJMhhgzggBhzBJBchQzzJJ => M => 39
+        // pHlSVbVbFHgHBzzhQHqg => H => 26 + 8 = 34
+        // nVsqGpbbtDtTNmrmfZ => t => 20
 
-        // // 17 + 34 + 20 = 71
-        // assert_eq!(solve_problem_03a(shortened_input), 71);
+        // 39 + 34 + 20 = 93
+        assert_eq!(solve_problem_03a(shortened_input), 93);
 
         let answer = solve_problem_03a(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 7691);
     }
     
     #[test]
@@ -80,6 +80,14 @@ mod test_problem_03 {
         assert_eq!(answer, 0);
     }
 
+    #[test]
+    fn test_gets_common_element() {
+        
+        assert_eq!(get_common_element("rNZNWvMZZmDDmwqNdZrWTqhJMhhgzggBhzBJBchQzzJJ".to_string()), 'M');
+        assert_eq!(get_common_element("pHlSVbVbFHgHBzzhQHqg".to_string()), 'H');
+        assert_eq!(get_common_element("nVsqGpbbtDtTNmrmfZ".to_string()), 't');
+
+    }
     #[test]
     fn test_letters_to_priority() {
 
