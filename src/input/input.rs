@@ -60,6 +60,23 @@ impl InputParser {
         file.read_to_string(&mut contents).map_err(|_| "Unable to read file.".to_string())?;
         return Ok(contents);
     }
+
+    pub fn chunk<T>(input: Vec<T>, chunk_size: usize) -> Result<Vec<Vec<T>>, String> {
+        if input.len() % chunk_size != 0 {
+            return Err(format!("Input length {} is not divisible by chunk size {}.", input.len(), chunk_size));
+        }
+        let mut result = vec![];
+        let mut chunk = vec![];
+        for (i, item) in input.into_iter().enumerate() {
+            chunk.push(item);
+            if (i + 1) % chunk_size == 0 {
+                result.push(chunk);
+                chunk = vec![];
+            }
+        }
+        Ok(result)
+    }
+
 }
 
 

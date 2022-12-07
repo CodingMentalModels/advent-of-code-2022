@@ -10,7 +10,8 @@ fn solve_problem_03a(input: Vec<String>) -> u32 {
 }
 
 fn solve_problem_03b(input: Vec<String>) -> u32 {
-    unimplemented!();
+    let teams = InputParser::chunk(input, 3).expect("We should be able to chunk the input into thirds.");
+    teams.into_iter().map(|team| get_priority(get_common_element_from_vec(team))).sum()
 }
 
 fn get_priority(c: char) -> u32 {
@@ -34,6 +35,17 @@ fn get_common_element(rucksack: String) -> char {
     assert_eq!(intersection.len(), 1);
     
     *intersection[0]
+}
+
+fn get_common_element_from_vec(strings: Vec<String>) -> char {
+    let intersection = strings.into_iter().map(|s| s.chars().collect::<HashSet<_>>())
+        .reduce(
+            |accumulator, element| accumulator.intersection(&element).map(
+                |c| *c)
+            .collect::<HashSet<char>>()
+        ).expect("At least one element should be in the starting vector.");
+    assert_eq!(intersection.len(), 1);
+    return intersection.into_iter().next().unwrap();
 }
 
 #[cfg(test)]
@@ -72,12 +84,20 @@ mod test_problem_03 {
     #[test]
     fn test_problem_03b_passes() {
         let input = InputParser::new().parse_as_string("input_03.txt").unwrap();
-        let shorted_input = input.iter().take(3).map(|i| i.clone()).collect();
-
-        assert_eq!(solve_problem_03b(shorted_input), 0);
+        
+        let example = vec![
+            "vJrwpWtwJgWrhcsFMMfFFhFp".to_string(),
+            "jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL".to_string(),
+            "PmmdzqPrVvPwwTWBwg".to_string(),
+            "wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn".to_string(),
+            "ttgJtRGJQctTZtZT".to_string(),
+            "CrZsJsPPZsGzwwsLwLmpwMDw".to_string(),
+        ];
+        
+        assert_eq!(solve_problem_03b(example), 70);
 
         let answer = solve_problem_03b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 2508);
     }
 
     #[test]
@@ -88,6 +108,29 @@ mod test_problem_03 {
         assert_eq!(get_common_element("nVsqGpbbtDtTNmrmfZ".to_string()), 't');
 
     }
+
+    #[test]
+    fn test_gets_common_element_from_vec() {
+
+        let v = vec![
+            "vJrwpWtwJgWrhcsFMMfFFhFp".to_string(),
+            "jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL".to_string(),
+            "PmmdzqPrVvPwwTWBwg".to_string(),
+        ];
+
+        assert_eq!(get_common_element_from_vec(v), 'r');
+
+
+        let v = vec![
+            "wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn".to_string(),
+            "ttgJtRGJQctTZtZT".to_string(),
+            "CrZsJsPPZsGzwwsLwLmpwMDw".to_string(),
+        ];
+
+        assert_eq!(get_common_element_from_vec(v), 'Z');
+
+    }
+
     #[test]
     fn test_letters_to_priority() {
 
