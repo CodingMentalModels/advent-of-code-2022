@@ -166,7 +166,7 @@ mod test_problem_02 {
         assert_eq!(solve_problem_02b(shorted_input), 28);
 
         let answer = solve_problem_02b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 14416);
     }
 
     #[test]
