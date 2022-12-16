@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::input::input::InputParser;
+use crate::utility::direction::Direction;
 
 pub fn solve_problem_08a(input: Vec<String>) -> usize {
     let forest = Forest::from_strings(input).unwrap();
@@ -144,26 +145,6 @@ impl Forest {
             }
         }
         return to_return;
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Direction {
-    Left,
-    Right,
-    Down,
-    Up,
-}
-
-impl Direction {
-
-    pub fn get_delta(&self) -> (i32, i32) {
-        match self {
-            Self::Left => (-1, 0),
-            Self::Right => (1, 0),
-            Self::Down => (0, -1),
-            Self::Up => (0, 1),
-        }
     }
 }
 
