@@ -50,6 +50,14 @@ impl Vec2 {
         self.y
     }
 
+    pub fn i() -> Self {
+        Self::new(1, 0)
+    }
+
+    pub fn j() -> Self {
+        Self::new(0, 1)
+    }
+
     pub fn get_l1_norm(&self) -> u32 {
         (self.x).abs() as u32 + (self.y).abs() as u32
     }

@@ -1,7 +1,11 @@
+use std::{collections::{HashSet, HashMap}, iter};
+
 use crate::{input::input::InputParser, utility::vector::Vec2};
 
 pub fn solve_problem_12a(input: Vec<String>) -> usize {
-    unimplemented!();
+    let grid = Grid::from_strings(input);
+    let shortest_path = grid.get_shortest_path(grid.get_starting_point(), grid.get_ending_point());
+    return shortest_path.unwrap().len() - 1;
 }
 
 fn solve_problem_12b(input: Vec<String>) -> usize {
@@ -24,6 +28,13 @@ struct Grid {
 impl Grid {
 
     pub fn new(starting_point: Vec2, ending_point: Vec2, grid: Vec<Vec<usize>>) -> Self {
+        assert!(grid.len() > 0);
+        assert!(grid[0].len() > 0);
+
+        let row_length = grid[0].len();
+
+        assert!(grid.iter().all(|x| x.len() == row_length));
+
         Self { starting_point, ending_point, grid }
     }
     
@@ -69,6 +80,22 @@ impl Grid {
         self.grid[v.x() as usize][v.y() as usize]
     }
 
+    pub fn maybe_get(&self, v: Vec2) -> Option<usize> {
+        if !self.is_in_bounds(v) {
+            return None;
+        }
+        Some(self.get(v))
+    }
+
+    pub fn is_in_bounds(&self, v: Vec2) -> bool {
+        let dimensions = self.get_dimensions();
+        (v.x() >= 0) && (v.y() >= 0) && (v.x() < dimensions.0 as i32) && (v.y() < dimensions.1 as i32)
+    }
+
+    pub fn get_dimensions(&self) -> (usize, usize) {
+        (self.grid.len(), self.grid[0].len())
+    }
+
     pub fn get_starting_point(&self) -> Vec2 {
         self.starting_point
     }
@@ -77,10 +104,76 @@ impl Grid {
         self.ending_point
     }
 
-    pub fn get_shortest_path(&self, start: Vec2, end: Vec2) -> Option<Vec<Vec2>> {
-        unimplemented!()
+    pub fn get_coordinates(&self) -> Vec<Vec2> {
+        let dimensions = self.get_dimensions();
+        (0..dimensions.0).into_iter().map(
+            |i| iter::repeat(i).zip(0..dimensions.1).map(|(i, j)| Vec2::new(i as i32, j as i32))
+        ).flatten().collect()
     }
+
+    pub fn get_neighbors(&self, coordinates: Vec2) -> HashSet<Vec2> {
+        let coordinates_height = self.get(coordinates);
+        self.get_adjacent(coordinates).into_iter().filter(|v| self.get(*v) as i32 - coordinates_height as i32 <= 1).collect()
+    }
+
+    pub fn get_adjacent(&self, coordinates: Vec2) -> HashSet<Vec2> {
+        vec![
+            coordinates + Vec2::i(),
+            coordinates - Vec2::i(),
+            coordinates + Vec2::j(),
+            coordinates - Vec2::j(),
+        ].into_iter().filter(|x| self.is_in_bounds(*x)).collect()
+    }
+
+    pub fn get_shortest_path(&self, start: Vec2, end: Vec2) -> Option<Vec<Vec2>> {
+        
+        let mut to_check: HashSet<Vec2> = self.get_coordinates().into_iter().collect();
+        
+        let mut distances_so_far: HashMap<Vec2, usize> = to_check.iter().map(|node| {
+            if *node == start {
+                (*node, 0)
+            } else {
+                (*node, usize::MAX)
+            }
+        }).collect();
+        let mut parent_map: HashMap<Vec2, Option<Vec2>> = vec![(start, None)].into_iter().collect();
+
+        loop {
+            if to_check.len() == 0 {
+                return None;
+            }
+            let node = *to_check.iter()
+                .reduce(|a, i| if distances_so_far.get(i) < distances_so_far.get(a) { i } else {a}).expect("We already checked for empty.");
+            if node == end {
+                return Some(Self::get_path_from_parent_map(parent_map, node));
+            }
+            let neighbors = self.get_neighbors(node);
+            let new_distance = distances_so_far.get(&node).expect("We've fully populated distances so far.") + 1;
+            for neighbor in neighbors {
+                if new_distance < *distances_so_far.get(&neighbor).expect(&format!("We've already populated distances_so_far but {:?} has no entry", neighbor)) {
+                    distances_so_far.insert(neighbor, new_distance);
+                    parent_map.insert(neighbor, Some(node));
+                }
+            }
+            to_check.remove(&node);
+        }
+
+    }
+
+    fn get_path_from_parent_map(parent_map: HashMap<Vec2, Option<Vec2>>, node: Vec2) -> Vec<Vec2> {
+        let mut to_return = Vec::new();
+        let mut current = node;
+        loop {
+            to_return.push(current);
+            match parent_map.get(&current).expect("The parent map should be complete!") {
+                None => return to_return.into_iter().rev().collect(),
+                Some(c) => { current = *c; },
+            };
+        }
+    }
+
 }
+
 
 
 #[cfg(test)]
@@ -108,7 +201,7 @@ mod test_problem_12 {
         let input = InputParser::new().parse_as_string("input_12.txt").unwrap();
 
         let answer = solve_problem_12a(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 517);
     }
     
     #[test]
@@ -130,53 +223,30 @@ mod test_problem_12 {
         assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(1, 0)), Some(vec![Vec2::new(0, 0), Vec2::new(1, 0)]));
         assert_eq!(grid.get_shortest_path(Vec2::new(1, 7), Vec2::new(0, 7)), Some(vec![Vec2::new(1, 7), Vec2::new(0, 7)]));
 
-        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(1, 1)), Some(
-            vec![
-                Vec2::new(0, 0),
-                Vec2::new(1, 0),
-                Vec2::new(1, 1),
-                ]
-            )
-        );
+        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(1, 1)).unwrap().len(), 3);
 
-        assert_eq!(grid.get_shortest_path(grid.get_starting_point(), grid.get_ending_point()), Some(
-            vec![
-                Vec2::new(0, 0),
-                Vec2::new(1, 0),
-                Vec2::new(1, 1),
-                Vec2::new(2, 1),
-                Vec2::new(2, 2),
-                Vec2::new(3, 2),
-                Vec2::new(4, 2),
-                Vec2::new(4, 3),
-                Vec2::new(4, 4),
-                Vec2::new(4, 5),
-                Vec2::new(4, 6),
-                Vec2::new(4, 7),
-                Vec2::new(3, 7),
-                Vec2::new(2, 7),
-                Vec2::new(1, 7),
-                Vec2::new(0, 7),
-                Vec2::new(0, 6),
-                Vec2::new(0, 5),
-                Vec2::new(0, 4),
-                Vec2::new(0, 3),
-                Vec2::new(1, 3),
-                Vec2::new(2, 3),
-                Vec2::new(3, 3),
-                Vec2::new(3, 4),
-                Vec2::new(3, 5),
-                Vec2::new(3, 6),
-                Vec2::new(2, 6),
-                Vec2::new(1, 6),
-                Vec2::new(1, 5),
-                Vec2::new(1, 4),
-                Vec2::new(2, 4),
-                Vec2::new(2, 5),
-                ]
-            )
-        );
+        assert_eq!(grid.get_shortest_path(grid.get_starting_point(), grid.get_ending_point()).unwrap().len(), 32);
 
+    }
+
+    #[test]
+    fn test_get_neighbors() {
+
+        let grid = Grid::from_strings(get_example_input());
+
+        assert_eq!(
+            grid.get_neighbors(grid.get_starting_point()),
+            vec![Vec2::new(0, 1), Vec2::new(1, 0)].into_iter().collect()
+        );
+        assert_eq!(
+            grid.get_neighbors(grid.get_ending_point()),
+            vec![Vec2::new(2, 4), Vec2::new(2, 6), Vec2::new(1, 5), Vec2::new(3, 5)].into_iter().collect()
+        );
+        assert_eq!(
+            grid.get_neighbors(Vec2::new(0, 2)),
+            vec![Vec2::new(0, 1), Vec2::new(1, 2)].into_iter().collect()
+        );
+        
     }
 
     #[test]
