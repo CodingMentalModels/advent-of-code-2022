@@ -4,12 +4,22 @@ use crate::{input::input::InputParser, utility::vector::Vec2};
 
 pub fn solve_problem_12a(input: Vec<String>) -> usize {
     let grid = Grid::from_strings(input);
-    let shortest_path = grid.get_shortest_path(grid.get_starting_point(), grid.get_ending_point());
+    let shortest_path = grid.get_shortest_path_between(
+        false,
+        grid.get_starting_point(),
+        grid.get_ending_point()
+    );
     return shortest_path.unwrap().len() - 1;
 }
 
 fn solve_problem_12b(input: Vec<String>) -> usize {
-    unimplemented!();
+    let grid = Grid::from_strings(input);
+    let shortest_path = grid.get_shortest_path(
+        true,
+        grid.get_ending_point(),
+        &|n| grid.get(n) == 0,
+    );
+    return shortest_path.unwrap().len() - 1;
 }
 
 fn to_height(c: char) -> usize {
@@ -116,6 +126,11 @@ impl Grid {
         self.get_adjacent(coordinates).into_iter().filter(|v| self.get(*v) as i32 - coordinates_height as i32 <= 1).collect()
     }
 
+    pub fn get_inverse_neighbors(&self, coordinates: Vec2) -> HashSet<Vec2> {
+        let coordinates_height = self.get(coordinates);
+        self.get_adjacent(coordinates).into_iter().filter(|v| self.get(*v) as i32 - coordinates_height as i32 >= -1).collect()
+    }
+
     pub fn get_adjacent(&self, coordinates: Vec2) -> HashSet<Vec2> {
         vec![
             coordinates + Vec2::i(),
@@ -125,8 +140,14 @@ impl Grid {
         ].into_iter().filter(|x| self.is_in_bounds(*x)).collect()
     }
 
-    pub fn get_shortest_path(&self, start: Vec2, end: Vec2) -> Option<Vec<Vec2>> {
+    pub fn get_shortest_path_between(&self, use_inverse_neighbors: bool, start: Vec2, end: Vec2) -> Option<Vec<Vec2>> {
         
+        self.get_shortest_path(use_inverse_neighbors, start, &(|n| n == end))
+
+    }
+
+    pub fn get_shortest_path(&self, use_inverse_neighbors: bool, start: Vec2, end_condition: &dyn Fn(Vec2) -> bool) -> Option<Vec<Vec2>> {
+
         let mut to_check: HashSet<Vec2> = self.get_coordinates().into_iter().collect();
         
         let mut distances_so_far: HashMap<Vec2, usize> = to_check.iter().map(|node| {
@@ -144,10 +165,14 @@ impl Grid {
             }
             let node = *to_check.iter()
                 .reduce(|a, i| if distances_so_far.get(i) < distances_so_far.get(a) { i } else {a}).expect("We already checked for empty.");
-            if node == end {
+            if end_condition(node) {
                 return Some(Self::get_path_from_parent_map(parent_map, node));
             }
-            let neighbors = self.get_neighbors(node);
+            let neighbors = if use_inverse_neighbors {
+                self.get_inverse_neighbors(node)
+            } else {
+                self.get_neighbors(node)
+            };
             let new_distance = distances_so_far.get(&node).expect("We've fully populated distances so far.") + 1;
             for neighbor in neighbors {
                 if new_distance < *distances_so_far.get(&neighbor).expect(&format!("We've already populated distances_so_far but {:?} has no entry", neighbor)) {
@@ -206,10 +231,13 @@ mod test_problem_12 {
     
     #[test]
     fn test_problem_12b_passes() {
+
+        assert_eq!(solve_problem_12b(get_example_input()), 29);
+
         let input = InputParser::new().parse_as_string("input_12.txt").unwrap();
 
         let answer = solve_problem_12b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 512);
     }
 
     #[test]
@@ -217,15 +245,15 @@ mod test_problem_12 {
         
         let grid = Grid::from_strings(get_example_input());
 
-        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(0, 0)), Some(vec![Vec2::new(0, 0)]));
+        assert_eq!(grid.get_shortest_path_between(false, Vec2::new(0, 0), Vec2::new(0, 0)), Some(vec![Vec2::new(0, 0)]));
 
-        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(0, 1)), Some(vec![Vec2::new(0, 0), Vec2::new(0, 1)]));
-        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(1, 0)), Some(vec![Vec2::new(0, 0), Vec2::new(1, 0)]));
-        assert_eq!(grid.get_shortest_path(Vec2::new(1, 7), Vec2::new(0, 7)), Some(vec![Vec2::new(1, 7), Vec2::new(0, 7)]));
+        assert_eq!(grid.get_shortest_path_between(false, Vec2::new(0, 0), Vec2::new(0, 1)), Some(vec![Vec2::new(0, 0), Vec2::new(0, 1)]));
+        assert_eq!(grid.get_shortest_path_between(false, Vec2::new(0, 0), Vec2::new(1, 0)), Some(vec![Vec2::new(0, 0), Vec2::new(1, 0)]));
+        assert_eq!(grid.get_shortest_path_between(false, Vec2::new(1, 7), Vec2::new(0, 7)), Some(vec![Vec2::new(1, 7), Vec2::new(0, 7)]));
 
-        assert_eq!(grid.get_shortest_path(Vec2::new(0, 0), Vec2::new(1, 1)).unwrap().len(), 3);
+        assert_eq!(grid.get_shortest_path_between(false, Vec2::new(0, 0), Vec2::new(1, 1)).unwrap().len(), 3);
 
-        assert_eq!(grid.get_shortest_path(grid.get_starting_point(), grid.get_ending_point()).unwrap().len(), 32);
+        assert_eq!(grid.get_shortest_path_between(false, grid.get_starting_point(), grid.get_ending_point()).unwrap().len(), 32);
 
     }
 

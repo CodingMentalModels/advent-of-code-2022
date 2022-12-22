@@ -40,7 +40,7 @@ impl Parser {
         self.consume_remaining()
     }
 
-    pub fn consume_while(&mut self, condition: fn(char) -> bool) -> String {
+    pub fn consume_until(&mut self, condition: &dyn Fn(char) -> bool) -> String {
         for (i, c) in self.to_parse.chars().skip(self.pointer).enumerate() {
             if condition(c) {
                 let to_return = self.consume_n(i);
@@ -51,11 +51,11 @@ impl Parser {
     }
 
     pub fn consume_whitespace(&mut self) -> String {
-        self.consume_while(|ch| !Self::whitespace_chars().contains(&ch))
+        self.consume_until(&|ch| !Self::whitespace_chars().contains(&ch))
     }
 
     pub fn consume_until_whitespace(&mut self) -> String {
-        self.consume_while(|ch| Self::whitespace_chars().contains(&ch))
+        self.consume_until(&|ch| Self::whitespace_chars().contains(&ch))
     }
 
     fn whitespace_chars() -> HashSet<char> {
