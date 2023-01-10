@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Sub};
+use std::ops::{Add, AddAssign, Sub, Mul};
 
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct Vec2 {
@@ -36,6 +36,17 @@ impl Sub for Vec2 {
         }
     }
 }
+
+impl Mul<i32> for Vec2 {
+    type Output = Self;
+
+    fn mul(self, rhs: i32) -> Self::Output {
+        Self {
+            x: rhs * self.x,
+            y: rhs * self.y,
+        }
+    }
+}
 impl Vec2 {
 
     pub fn new(x: i32, y: i32) -> Self {
@@ -65,6 +76,20 @@ impl Vec2 {
     pub fn signum(&self) -> Self {
         Self::new(self.x.signum(), self.y.signum())
     }
+
+    pub fn get_points_between(left: Self, right: Self) -> Vec<Self> {
+        assert!(left.x() == right.x() || left.y() == right.y() || (left.x() - right.x()).abs() == (left.y() - right.y()).abs());
+        let direction = (right - left).signum();
+        let mut to_return = Vec::new();
+        let mut next = left;
+        while next != right {
+            to_return.push(next);
+            next += direction;
+        }
+        to_return.push(right);
+        return to_return;
+    }
+
 }
 #[cfg(test)]
 mod test_vector {
@@ -90,5 +115,27 @@ mod test_vector {
         assert_eq!(Vec2::new(12, 5), Vec2::new(1, 1));
         assert_eq!(Vec2::new(-3, 2), Vec2::new(-1, 1));
         assert_eq!(Vec2::new(-10, -43), Vec2::new(-1, -1));
+    }
+
+    #[test]
+    fn test_vectors_get_points_between() {
+        assert_eq!(Vec2::get_points_between(Vec2::i(), Vec2::i()), vec![Vec2::i()]);
+        assert_eq!(Vec2::get_points_between(Vec2::j(), Vec2::j()), vec![Vec2::j()]);
+        assert_eq!(
+            Vec2::get_points_between(Vec2::new(1, 5), Vec2::new(3, 5)),
+            vec![Vec2::new(1, 5), Vec2::new(2, 5), Vec2::new(3, 5)]
+        );
+        assert_eq!(
+            Vec2::get_points_between(Vec2::new(1, 2), Vec2::new(1, -1)),
+            vec![Vec2::new(1, 2), Vec2::new(1, 1), Vec2::new(1, 0), Vec2::new(1, -1)]
+        );
+        assert_eq!(
+            Vec2::get_points_between(Vec2::new(1, 2), Vec2::new(3, 4)),
+            vec![Vec2::new(1, 2), Vec2::new(2, 3), Vec2::new(3, 4)]
+        );
+        assert_eq!(
+            Vec2::get_points_between(Vec2::new(1, 2), Vec2::new(-1, 4)),
+            vec![Vec2::new(1, 2), Vec2::new(0, 3), Vec2::new(-1, 4)]
+        );
     }
 }

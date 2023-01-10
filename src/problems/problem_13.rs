@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, cmp::Ordering};
 
 use crate::{input::input::InputParser, utility::parser::Parser};
 
@@ -11,13 +11,42 @@ pub fn solve_problem_13a(input: Vec<String>) -> usize {
 }
 
 fn solve_problem_13b(input: Vec<String>) -> usize {
-    unimplemented!();
+
+        let mut packets = PacketPart::from_strings(input.into_iter().filter(|x| x.len() > 0).collect());
+        let packet_2 = PacketPart::from_string("[[2]]".to_string());
+        let packet_6 = PacketPart::from_string("[[6]]".to_string());
+        packets.push(packet_2.clone());
+        packets.push(packet_6.clone());
+
+        packets.sort();
+
+        let idx_2 = packets.binary_search(&packet_2).expect("Packet 2 should definitely be in the packets.");
+        let idx_6 = packets.binary_search(&packet_6).expect("Packet 6 should definitely be in the packets.");
+
+        return (idx_2 + 1) * (idx_6 + 1);
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PacketPart {
     List(Vec<PacketPart>),
     N(u32)
+}
+
+impl Ord for PacketPart {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).expect("partial_cmp doesn't return None.")
+    }
+}
+
+impl PartialOrd for PacketPart {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match Self::is_ordered(self, other) {
+            Some(true) => Some(Ordering::Less),
+            Some(false) => Some(Ordering::Greater),
+            None => Some(Ordering::Equal),
+        }
+    }
 }
 
 impl PacketPart {
@@ -30,6 +59,10 @@ impl PacketPart {
         .into_iter()
         .map(|pair| (Self::from_string(pair[0].clone()), Self::from_string(pair[1].clone())))
         .collect()
+    }
+
+    pub fn from_strings(strings: Vec<String>) -> Vec<Self> {
+        strings.into_iter().map(|s| Self::from_string(s)).collect()
     }
 
     pub fn from_string(s: String) -> Self {
@@ -155,10 +188,43 @@ mod test_problem_13 {
     
     #[test]
     fn test_problem_13b_passes() {
+        let example_input = InputParser::new().parse_as_string("example_input_13.txt").unwrap();
+        assert_eq!(solve_problem_13b(example_input), 140);
+
         let input = InputParser::new().parse_as_string("input_13.txt").unwrap();
 
         let answer = solve_problem_13b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 21276);
+    }
+
+    #[test]
+    fn test_sorts_correctly() {
+        
+        let example_input = InputParser::new().parse_as_string("example_input_13.txt").unwrap();
+
+        let mut packets = PacketPart::from_strings(example_input.into_iter().filter(|x| x.len() > 0).collect());
+        packets.sort();
+
+        let expected = vec![
+            "[]".to_string(),
+            "[[]]".to_string(),
+            "[[[]]]".to_string(),
+            "[1,1,3,1,1]".to_string(),
+            "[1,1,5,1,1]".to_string(),
+            "[[1],[2,3,4]]".to_string(),
+            "[1,[2,[3,[4,[5,6,0]]]],8,9]".to_string(),
+            "[1,[2,[3,[4,[5,6,7]]]],8,9]".to_string(),
+            "[[1],4]".to_string(),
+            "[3]".to_string(),
+            "[[4,4],4,4]".to_string(),
+            "[[4,4],4,4,4]".to_string(),
+            "[7,7,7]".to_string(),
+            "[7,7,7,7]".to_string(),
+            "[[8,7,6]]".to_string(),
+            "[9]".to_string(),
+        ];
+        assert_eq!(packets, PacketPart::from_strings(expected));
+
     }
 
     #[test]
