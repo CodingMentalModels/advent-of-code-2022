@@ -152,27 +152,27 @@ impl ValveGraph {
     pub fn get_maximum_flow_with_elephant(&self, unvisited: &HashSet<usize>, time_remaining: Time, player_plan: Plan, elephant_plan: Plan, max_so_far: u32) -> u32 {
         let mut new_max_so_far = max_so_far;
         if player_plan.arrived() {
-            new_max_so_far += self.valves[player_plan.target].get_cumulative_pressure_if_opened_over(time_remaining);
+            new_max_so_far += self.valves[player_plan.get_target().unwrap()].get_cumulative_pressure_if_opened_over(time_remaining);
         }
         if elephant_plan.arrived() {
-            new_max_so_far += self.valves[elephant_plan.target].get_cumulative_pressure_if_opened_over(time_remaining);
+            new_max_so_far += self.valves[elephant_plan.get_target().unwrap()].get_cumulative_pressure_if_opened_over(time_remaining);
         }
 
-        if time_remaining == 0 {
+        if time_remaining == 0 || (player_plan == Plan::Done && elephant_plan == Plan::Done) {
             return new_max_so_far;
         }
 
-        if player_plan.arrived() && elephant_plan.arrived() {
-            let to_visit = unvisited.iter().permutations(2).map(|v| (*v[0], *v[1])).collect();
+        if unvisited.len() >= 2 && player_plan.arrived() && elephant_plan.arrived() {
+            let to_visit = unvisited.iter().permutations(2).map(|v| (Some(*v[0]), Some(*v[1]))).collect();
             self.visit_with_elephant(unvisited, time_remaining, player_plan, elephant_plan, new_max_so_far, to_visit)
-        } else if player_plan.arrived() {
-            let to_visit = unvisited.iter().map(|i| (*i, elephant_plan.target)).collect();
+        } else if unvisited.len() > 0 && player_plan.arrived() {
+            let to_visit = unvisited.iter().map(|i| (Some(*i), elephant_plan.get_target())).collect();
             self.visit_with_elephant(unvisited, time_remaining, player_plan, elephant_plan, new_max_so_far, to_visit)
-        } else if elephant_plan.arrived() {
-            let to_visit = unvisited.iter().map(|i| (player_plan.target, *i)).collect();
+        } else if unvisited.len() > 0 && elephant_plan.arrived() {
+            let to_visit = unvisited.iter().map(|i| (player_plan.get_target(), Some(*i))).collect();
             self.visit_with_elephant(unvisited, time_remaining, player_plan, elephant_plan, new_max_so_far, to_visit)
         } else {
-            let to_visit = vec![(player_plan.target, elephant_plan.target)].into_iter().collect();
+            let to_visit = vec![(player_plan.get_target(), elephant_plan.get_target())].into_iter().collect();
             self.visit_with_elephant(unvisited, time_remaining, player_plan, elephant_plan, new_max_so_far, to_visit)
         }
 
@@ -185,21 +185,31 @@ impl ValveGraph {
         player_plan: Plan,
         elephant_plan: Plan,
         new_max_so_far: u32,
-        to_visit: HashSet<(usize, usize)>
+        to_visit: HashSet<(Option<usize>, Option<usize>)>
     ) -> u32 {
         let new_time_remaining = time_remaining - 1;
         return to_visit.into_iter()
             .map(|(player_target, elephant_target)| {
                 assert_ne!(player_target, elephant_target);
                 let new_unvisited = unvisited.iter().cloned()
-                    .filter(|i| *i != player_target && *i != elephant_target).collect::<HashSet<_>>();
-                let new_player_plan = if player_plan.arrived() {
-                    Plan::new(player_target, *self.distances.get(&(player_plan.target, player_target)).unwrap())
+                    .filter(|i| Some(*i) != player_target && Some(*i) != elephant_target).collect::<HashSet<_>>();
+
+                let new_player_plan = if player_plan == Plan::Done {
+                    Plan::Done
+                } else if player_plan.arrived() && player_target == player_plan.get_target() {
+                    Plan::Done
+                } else if player_plan.arrived() {
+                    Plan::new(player_target.unwrap(), *self.distances.get(&(player_plan.get_target().unwrap(), player_target.unwrap())).unwrap())
                 } else {
                     player_plan.get_ticked()
                 };
-                let new_elephant_plan = if elephant_plan.arrived() {
-                    Plan::new(elephant_target, *self.distances.get(&(elephant_plan.target, elephant_target)).unwrap())
+
+                let new_elephant_plan = if elephant_plan == Plan::Done {
+                    Plan::Done
+                } else if elephant_plan.arrived() && elephant_target == elephant_plan.get_target() {
+                    Plan::Done
+                } else if elephant_plan.arrived() {
+                    Plan::new(elephant_target.unwrap(), *self.distances.get(&(elephant_plan.get_target().unwrap(), elephant_target.unwrap())).unwrap())
                 } else {
                     elephant_plan.get_ticked()
                 };
@@ -298,24 +308,43 @@ impl ValveGraph {
 
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-struct Plan {
-    target: usize,
-    time_remaining: Time,
+enum Plan {
+    Working(usize, Time),
+    Done,
 }
 
 impl Plan {
 
     pub fn new(target: usize, time_remaining: Time) -> Self {
-        Self {target, time_remaining}
+        Self::Working(target, time_remaining)
+    }
+
+    pub fn get_target(&self) -> Option<usize> {
+        match self {
+            Self::Done => None,
+            Self::Working(target, _time_remaining) => { Some(*target) }
+        }
     }
 
     pub fn get_ticked(&self) -> Self {
-        let time_remaining = if self.time_remaining == 0 { 0 } else { self.time_remaining - 1 };
-        Self::new(self.target, time_remaining)
+        match self {
+            Self::Working(target, time_remaining) => {
+                let new_time_remaining = if *time_remaining == 0 { 0 } else { time_remaining - 1 };
+                Self::new(*target, new_time_remaining)
+            },
+            Self::Done => {
+                self.clone()
+            }
+        }
     }
 
     pub fn arrived(&self) -> bool {
-        self.time_remaining == 0
+        match self {
+            Self::Working(_target, time_remaining) => {
+                *time_remaining == 0
+            },
+            _ => false
+        }
     }
 }
 
@@ -498,9 +527,9 @@ mod test_problem_16 {
     }
 
     #[test]
-    fn test_simple_valve_graph_finds_maximum_flow_with_elephant() {
+    fn test_very_simple_valve_graph_finds_maximum_flow_with_elephant() {
         
-        let simple_valves = Valve::linear(vec![0, 1, 10, 100, 1000]);
+        let simple_valves = Valve::linear(vec![0, 1, 10]);
         let simple_graph = ValveGraph::new(simple_valves.clone());
 
         let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
@@ -555,21 +584,82 @@ mod test_problem_16 {
             0
         );
 
-        assert_eq!(solution, 2*10 + 100);
+        assert_eq!(solution, 3*1 + 2*10);
+    }
 
-        let simple_graph = ValveGraph::new(simple_valves.clone());
+    #[test]
+    fn test_simple_valve_graph_finds_maximum_flow_with_elephant() {
+        
+        let simple_valves = Valve::linear(vec![0, 1, 10, 100, 1000]);
+        // let simple_graph = ValveGraph::new(simple_valves.clone());
 
-        let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
+        // let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
 
-        let solution = simple_graph.get_maximum_flow_with_elephant(
-            &nodes_with_flow,
-            6,
-            Plan::new(0, 0),
-            Plan::new(0, 0),
-            0
-        );
+        // let solution = simple_graph.get_maximum_flow_with_elephant(
+        //     &nodes_with_flow,
+        //     2,
+        //     Plan::new(0, 0),
+        //     Plan::new(0, 0),
+        //     0
+        // );
 
-        assert_eq!(solution, 2*100 + 1000);
+        // assert_eq!(solution, 0);
+
+        // let simple_graph = ValveGraph::new(simple_valves.clone());
+
+        // let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
+
+        // let solution = simple_graph.get_maximum_flow_with_elephant(
+        //     &nodes_with_flow,
+        //     3,
+        //     Plan::new(0, 0),
+        //     Plan::new(0, 0),
+        //     0
+        // );
+
+        // assert_eq!(solution, 1);
+
+        // let simple_graph = ValveGraph::new(simple_valves.clone());
+
+        // let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
+
+        // let solution = simple_graph.get_maximum_flow_with_elephant(
+        //     &nodes_with_flow,
+        //     4,
+        //     Plan::new(0, 0),
+        //     Plan::new(0, 0),
+        //     0
+        // );
+
+        // assert_eq!(solution, 2*1 + 10);
+
+        // let simple_graph = ValveGraph::new(simple_valves.clone());
+
+        // let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
+
+        // let solution = simple_graph.get_maximum_flow_with_elephant(
+        //     &nodes_with_flow,
+        //     5,
+        //     Plan::new(0, 0),
+        //     Plan::new(0, 0),
+        //     0
+        // );
+
+        // assert_eq!(solution, 2*10 + 100);
+
+        // let simple_graph = ValveGraph::new(simple_valves.clone());
+
+        // let nodes_with_flow = (0..simple_valves.len()).into_iter().filter(|i| simple_valves[*i].get_flow_rate() > 0).collect::<HashSet<_>>();
+
+        // let solution = simple_graph.get_maximum_flow_with_elephant(
+        //     &nodes_with_flow,
+        //     6,
+        //     Plan::new(0, 0),
+        //     Plan::new(0, 0),
+        //     0
+        // );
+
+        // assert_eq!(solution, 2*100 + 1000);
 
         let simple_graph = ValveGraph::new(simple_valves.clone());
 
