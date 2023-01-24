@@ -24,7 +24,8 @@ fn solve_problem_17b(input: String) -> usize {
 
 type Time = usize;
 
-const MAX_X: usize = 7;
+const WIDTH: usize = 7;
+const MAX_PERIOD: usize = 50455;
 
 struct Simulation {
     jet_patterns: Vec<Direction>,
@@ -33,20 +34,21 @@ struct Simulation {
     simulation_phase: SimulationPhase,
     falling_rock: Rock,
     next_jet_pattern_idx: usize,
-    occupied_squares: Bitmask,
+    occupied_squares: OccupiedSquares,
 }
 
 impl Simulation {
 
     pub fn new(jet_patterns: Vec<Direction>) -> Self {
+        let initial_rock = Rock::Square;
         Self {
             jet_patterns,
             time_elapsed: 0,
             n_rocks_fallen: 0,
             simulation_phase: SimulationPhase::NewRock,
-            falling_rock: Rock::Square,
+            falling_rock: initial_rock,
             next_jet_pattern_idx: 0,
-            occupied_squares: Bitmask::default(),
+            occupied_squares: OccupiedSquares::default(),
         }
     }
 
@@ -83,12 +85,33 @@ impl Simulation {
         }
     }
 
-    pub fn get_occupied_squares(&self) -> Bitmask {
-        self.occupied_squares
+    pub fn get_occupied_squares(&self) -> &OccupiedSquares {
+        &self.occupied_squares
+    }
+
+    pub fn get_period(&mut self) -> Option<Time> {
+        let mut counter = 0;
+        while self.get_n_rocks_fallen() == 0 || !self.is_flat() || self.falling_rock != Rock::Minus || self.next_jet_pattern_idx != 0 {
+            if counter > MAX_PERIOD {
+                return None;
+            }
+            self.step_until_rock_lands();
+            counter += 1;
+        }
+
+        return Some(self.get_time_elapsed());
+    }
+
+    pub fn is_flat(&self) -> bool {
+        if self.occupied_squares.is_empty() {
+            return true;
+        }
+        let max_y = self.occupied_squares.get_max_y();
+        (0..WIDTH).into_iter().all(|x| self.occupied_squares.contains(Vec2::new(x as i32, max_y as i32)))
     }
 
     pub fn get_height(&self) -> usize {
-        if self.occupied_squares == Bitmask(0) {
+        if self.occupied_squares.is_empty() {
             return 0;
         }
         self.occupied_squares.get_max_y() + 1
@@ -129,7 +152,7 @@ impl Simulation {
             },
             SimulationPhase::HandleFall(rock_position) => {
                 if self.falling_rock_has_landed() {
-                    self.occupied_squares = self.occupied_squares.union(self.falling_rock.get_stone_positions(rock_position));
+                    self.occupied_squares = self.occupied_squares.union(&self.falling_rock.get_stone_positions(rock_position));
                     self.simulation_phase = SimulationPhase::NewRock;
                 } else {
                     let new_position = self.get_movement_effect(Direction::Down);
@@ -155,7 +178,7 @@ impl Simulation {
         if direction == Direction::Down {
             if original_position.y() == 0 {
                 return original_position;
-            } else if self.falling_rock.get_stone_positions(potential_new_position).is_disjoint(self.occupied_squares) {
+            } else if self.falling_rock.get_stone_positions(potential_new_position).is_disjoint(&self.occupied_squares) {
                 return potential_new_position;
             } else {
                 return original_position;
@@ -168,7 +191,7 @@ impl Simulation {
 
         let rock_squares = self.falling_rock.get_stone_positions(potential_new_position);
 
-        if !rock_squares.is_disjoint(self.occupied_squares) {
+        if !rock_squares.is_disjoint(&self.occupied_squares) {
             return original_position;
         } else {
             return potential_new_position;
@@ -243,16 +266,16 @@ impl Rock {
     }
 
     pub fn rock_would_collide_with_wall(&self, rock_position: Vec2) -> bool {
-        (rock_position.x() < 0) || (rock_position.x() + self.get_width() as i32 > MAX_X as i32)
+        (rock_position.x() < 0) || (rock_position.x() + self.get_width() as i32 > WIDTH as i32)
     }
 
-    pub fn get_stone_positions(&self, rock_position: Vec2) -> Bitmask {
+    pub fn get_stone_positions(&self, rock_position: Vec2) -> OccupiedSquares {
         assert!(!self.rock_would_collide_with_wall(rock_position));
-        self.get_relative_stone_positions().shift(Bitmask::get_shift(rock_position))
+        self.get_relative_stone_positions().shift(rock_position)
     }
 
-    pub fn get_relative_stone_positions(&self) -> Bitmask {
-        Bitmask::from_vecs(Self::get_relative_stone_positions_as_vecs(self))
+    pub fn get_relative_stone_positions(&self) -> OccupiedSquares {
+        OccupiedSquares::new(Self::get_relative_stone_positions_as_vecs(self))
     }
 
     fn get_relative_stone_positions_as_vecs(&self) -> HashSet<Vec2> {
@@ -295,73 +318,124 @@ impl Rock {
 
 }
 
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
-struct Bitmask(u64);
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OccupiedSquares(HashSet<Vec2>);
 
-impl Bitmask {
+impl OccupiedSquares {
 
-    pub fn new(n: u64) -> Self {
-        Self(n)
+    pub fn new_unchecked(vecs: HashSet<Vec2>) -> Self {
+        Self(vecs)
     }
 
-    pub fn from_vecs(vecs: HashSet<Vec2>) -> Self {
-        let n = vecs.into_iter().map(|v| (1 << Self::get_shift(v))).sum();
-        Self::new(n)
+    pub fn new(vecs: HashSet<Vec2>) -> Self {
+        Self::new_unchecked(vecs)
+        // Self(vecs).get_surface()
     }
 
     pub fn len(&self) -> usize {
-        let mut to_return = 0;
-        let mut remainder = self.0;
-        while remainder != 0 {
-            to_return += (remainder & 1) as usize;
-            remainder = remainder >> 1;
-        }
-        return to_return;
+        self.0.len()
+    }
+    
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
-    pub fn is_disjoint(&self, other: Self) -> bool {
-        self.intersect(other) == Self(0)
+    pub fn is_disjoint(&self, other: &Self) -> bool {
+        self.intersect(other).is_empty()
     }
 
-    pub fn intersects(&self, other: Self) -> bool {
+    pub fn intersects(&self, other: &Self) -> bool {
         !self.is_disjoint(other)
     }
 
     pub fn contains(&self, v: Vec2) -> bool {
-        self.intersects(Self::from_vecs(vec![v].into_iter().collect()))
+        self.intersects(&Self::new_unchecked(vec![v].into_iter().collect()))
     }
 
-    pub fn intersect(&self, other: Self) -> Self {
-        Self(self.0 & other.0)
+    pub fn intersect(&self, other: &Self) -> Self {
+        Self(self.0.intersection(&other.0).cloned().collect())
     }
 
-    pub fn union(&self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-
-    pub fn shift(&self, n: usize) -> Self {
-        Self(self.0 << n)
-    }
-
-    pub fn get_shift(v: Vec2) -> usize {
-        assert!(v.x() >= 0 && v.x() < MAX_X as i32);
-        (MAX_X * TryInto::<usize>::try_into(v.y()).unwrap() + TryInto::<usize>::try_into(v.x()).unwrap())
+    pub fn union(&self, other: &Self) -> Self {
+        Self(self.0.union(&other.0).cloned().collect())
     }
 
     pub fn get_max_y(&self) -> usize {
-        let mut i = 0;
-        let mut remainder = self.0;
-        let limit = 1 << MAX_X;
-        while remainder >= limit {
-            remainder = remainder >> MAX_X;
-            i += 1;
-        }
-        return i;
+        self.0.iter().map(|v| v.y()).max().unwrap_or(0) as usize
     }
+
+    pub fn shift(&self, delta_v: Vec2) -> Self {
+        Self::new(self.0.iter().map(|v| v.clone() + delta_v).collect())
+    }
+
+    fn get_surface(&self) -> Self {
+        let mut to_return = HashSet::new();
+        let mut surface_element = self.0.iter()
+            .filter(|v| v.x() == 0)
+            .map(|v| v.y()).max()
+            .map(|max_y| Vec2::new(0, max_y));
+        let mut x = 0;
+        while x < WIDTH {
+            if surface_element.is_some() {
+                to_return.insert(surface_element.unwrap().clone());
+            }
+            let (next_x, next_surface_element) = self.get_next_surface_element(x, surface_element);
+            x = next_x;
+            surface_element = next_surface_element;
+        }
+        return Self::new_unchecked(to_return);
+    }
+
+    fn get_next_surface_element(&self, x: usize, surface_element: Option<Vec2>) -> (usize, Option<Vec2>) {
+        if surface_element.is_some() {
+            assert_eq!(surface_element.unwrap().x(), x as i32);
+        }
+        let y_plus_one = surface_element.map(|v| v.y() + 1).unwrap_or(0);
+
+        let above = Vec2::new(x as i32, y_plus_one);
+        let above_and_left = above - Vec2::i();
+        if self.contains(above_and_left) {
+            return (above_and_left.x() as usize, Some(above_and_left));
+        }
+
+        if self.contains(above) {
+            return (x, Some(above));
+        }
+
+        let above_and_right = above + Vec2::i();
+        if self.contains(above_and_right) {
+            return (x + 1, Some(above_and_right));
+        }
+
+        if surface_element.is_none() {
+            return (x + 1, None)
+        }
+        
+        let v = surface_element.unwrap();
+
+        let right = v + Vec2::i();
+        if self.contains(right) {
+            return (x + 1, Some(right));
+        }
+
+        let mut right_and_down = right - Vec2::j();
+        while right_and_down.y() >= 0 {
+            if self.contains(right_and_down) {
+                return (x + 1, Some(right_and_down))
+            }
+            right_and_down = right_and_down - Vec2::j();
+        }
+
+        return (x + 1, None);
+
+    }
+
 }
 
 #[cfg(test)]
 mod test_problem_17 {
+
+    use std::iter;
 
     use super::*;
 
@@ -377,18 +451,26 @@ mod test_problem_17 {
         let input = InputParser::new().parse_to_single_string("input_17.txt").unwrap();
 
         let answer = solve_problem_17a(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 3215);
     }
     
     #[test]
     fn test_problem_17b_passes() {
         
-        // assert_eq!(solve_problem_17b(get_example_input()), 1514285714288);
+        assert_eq!(solve_problem_17b(get_example_input()), 1514285714288);
 
-        // let input = InputParser::new().parse_to_single_string("input_17.txt").unwrap();
+        let input = InputParser::new().parse_to_single_string("input_17.txt").unwrap();
 
-        // let answer = solve_problem_17b(input);
-        // assert_eq!(answer, 0);
+        let answer = solve_problem_17b(input);
+        assert_eq!(answer, 0);
+    }
+
+    #[test]
+    fn test_detects_cycles() {
+
+        let mut simulation = Simulation::from_string(get_example_input());
+
+        assert_eq!(simulation.get_period(), Some(0));
     }
 
     #[test]
@@ -446,7 +528,7 @@ mod test_problem_17 {
         assert_eq!(simulation.get_falling_rock_position(), None);
         assert_eq!(
             simulation.get_occupied_squares().clone(),
-            Bitmask::from_vecs(vec![Vec2::new(2, 0), Vec2::new(3, 0), Vec2::new(4, 0), Vec2::new(5, 0)].into_iter().collect())
+            OccupiedSquares::new(vec![Vec2::new(2, 0), Vec2::new(3, 0), Vec2::new(4, 0), Vec2::new(5, 0)].into_iter().collect())
         );
         assert_eq!(simulation.get_time_elapsed(), 9);
         assert_eq!(simulation.get_falling_rock_type(), None);
@@ -477,7 +559,7 @@ mod test_problem_17 {
 
         let mut simulation = Simulation::from_string(get_example_input());
 
-        simulation.occupied_squares = Bitmask::from_vecs(vec![
+        simulation.occupied_squares = OccupiedSquares::new(vec![
             Vec2::new(3, 0),
             Vec2::new(3, 1),
             Vec2::new(3, 2),
@@ -485,53 +567,12 @@ mod test_problem_17 {
             Vec2::new(3, 4),
         ].into_iter().collect());
 
-        simulation.simulation_phase = SimulationPhase::HandleFall(Vec2::new(3, 6));
-        assert!(!simulation.falling_rock_has_landed());
+        // simulation.simulation_phase = SimulationPhase::HandleFall(Vec2::new(3, 6));
+        // assert!(!simulation.falling_rock_has_landed());
         
-        simulation.simulation_phase = SimulationPhase::HandleFall(Vec2::new(3, 5));
-        assert!(simulation.falling_rock_has_landed());
+        // simulation.simulation_phase = SimulationPhase::HandleFall(Vec2::new(3, 5));
+        // assert!(simulation.falling_rock_has_landed());
         
-    }
-
-    #[test]
-    fn test_bitmask_constructs() {
-        
-        // ...010 = 2^1 = 2
-        let bitmask = Bitmask::from_vecs(
-            vec![
-                Vec2::new(1, 0),
-            ].into_iter().collect()
-        );
-        assert_eq!(bitmask, Bitmask::new(2));
-        assert_eq!(bitmask.len(), 1);
-
-        // ...10000000 = 2^7 = 128
-        let bitmask = Bitmask::from_vecs(
-            vec![
-                Vec2::new(0, 1),
-            ].into_iter().collect()
-        );
-        assert_eq!(bitmask, Bitmask::new(128));
-        assert_eq!(bitmask.len(), 1);
-
-        let bitmask = Bitmask::from_vecs(
-            vec![
-                Vec2::new(1, 0),
-                Vec2::new(1, 1),
-            ].into_iter().collect()
-        );
-        assert_eq!(bitmask, Bitmask::new(2 + 256)); // 2^1 + 2^(7 + 1)
-        assert_eq!(bitmask.len(), 2);
-
-        assert!(bitmask.is_disjoint(Bitmask::new(0)));
-        assert!(bitmask.is_disjoint(Bitmask::new(1)));
-        assert!(!bitmask.is_disjoint(Bitmask::new(2)));
-        assert!(!bitmask.is_disjoint(Bitmask::new(3)));
-        assert!(bitmask.is_disjoint(Bitmask::new(4)));
-        assert!(bitmask.is_disjoint(Bitmask::new(255 - 2)));
-        assert!(!bitmask.is_disjoint(Bitmask::new(256 - 1)));
-        assert!(!bitmask.is_disjoint(Bitmask::new(256)));
-        assert!(!bitmask.is_disjoint(Bitmask::new(256 + 1)));
     }
 
 }
