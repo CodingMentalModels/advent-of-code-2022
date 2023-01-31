@@ -27,6 +27,7 @@ type Time = usize;
 const WIDTH: usize = 7;
 const MAX_PERIOD: usize = 50455;
 
+#[derive(Debug, PartialEq, Eq)]
 struct Simulation {
     jet_patterns: Vec<Direction>,
     time_elapsed: Time,
@@ -152,7 +153,7 @@ impl Simulation {
             },
             SimulationPhase::HandleFall(rock_position) => {
                 if self.falling_rock_has_landed() {
-                    self.occupied_squares_on_surface = self.occupied_squares_on_surface.union(&self.falling_rock.get_stone_positions_at_surface(rock_position));
+                    self.occupied_squares_on_surface = self.occupied_squares_on_surface.union(&self.falling_rock.get_stone_positions_unchecked(rock_position));
                     self.simulation_phase = SimulationPhase::NewRock;
                 } else {
                     let new_position = self.get_movement_effect(Direction::Down);
@@ -178,7 +179,7 @@ impl Simulation {
         if direction == Direction::Down {
             if original_position.y() == 0 {
                 return original_position;
-            } else if self.falling_rock.get_stone_positions_at_surface(potential_new_position).is_disjoint(&self.occupied_squares_on_surface) {
+            } else if self.falling_rock.get_stone_positions_unchecked(potential_new_position).is_disjoint(&self.occupied_squares_on_surface) {
                 return potential_new_position;
             } else {
                 return original_position;
@@ -189,7 +190,7 @@ impl Simulation {
             return original_position;
         } 
 
-        let rock_squares = self.falling_rock.get_stone_positions_at_surface(potential_new_position);
+        let rock_squares = self.falling_rock.get_stone_positions_unchecked(potential_new_position);
 
         if !rock_squares.is_disjoint(&self.occupied_squares_on_surface) {
             return original_position;
@@ -270,8 +271,12 @@ impl Rock {
     }
 
     pub fn get_stone_positions_at_surface(&self, rock_position: Vec2) -> OccupiedSquares {
+        self.get_stone_positions_unchecked(rock_position).get_surface()
+    }
+
+    pub fn get_stone_positions_unchecked(&self, rock_position: Vec2) -> OccupiedSquares {
         assert!(!self.rock_would_collide_with_wall(rock_position));
-        self.get_relative_stone_positions().shift(rock_position).get_surface()
+        self.get_relative_stone_positions().shift(rock_position)
     }
 
     pub fn get_relative_stone_positions(&self) -> OccupiedSquares {
@@ -434,6 +439,29 @@ mod test_problem_17 {
     }
 
     #[test]
+    fn test_steps_until_before_the_nth_rock() {
+        let mut actual_simulation = Simulation::from_string(get_example_input());
+
+        let mut expected_simulation = Simulation::from_string(get_example_input());
+
+        assert_eq!(actual_simulation, expected_simulation);
+
+        actual_simulation.step_until_before_the_nth_rock(1);
+        assert_eq!(actual_simulation, expected_simulation);
+
+        actual_simulation.step_until_before_the_nth_rock(2);
+        expected_simulation.step_until_rock_lands();
+        assert_eq!(actual_simulation, expected_simulation);
+
+        let mut actual_simulation = Simulation::from_string(get_example_input());
+        actual_simulation.step_until_before_the_nth_rock(3);
+        expected_simulation.step_until_rock_lands();
+        assert_eq!(actual_simulation, expected_simulation);
+
+
+    }
+
+    #[test]
     fn test_gets_surface_in_simulation() {
 
         let mut simulation = Simulation::from_string(get_example_input());
@@ -465,6 +493,17 @@ mod test_problem_17 {
             .reduce(|acc, elt| acc.union(&elt)).unwrap();
 
         assert_eq!(saturated_squares, OccupiedSquares::new_unchecked((0..7).into_iter().map(|x| Vec2::new(x, 3)).collect()))
+    }
+
+
+    #[test]
+    fn test_gets_non_trivial_surface() {
+
+        let mut squares = Rock::Bar.get_stone_positions_at_surface(Vec2::new(3, 0));
+        squares = squares.union(&Rock::Minus.get_stone_positions_at_surface(Vec2::new(0, 4)));
+        squares = squares.union(&Rock::Minus.get_stone_positions_at_surface(Vec2::new(3, 5)));
+
+        assert_eq!(squares.len(), 8, "{:?}", squares);
     }
 
     #[test]
@@ -635,6 +674,20 @@ mod test_problem_17 {
 
         assert_eq!(simulation.get_n_rocks_fallen(), 6);
         assert_eq!(simulation.get_height(), 10);
+
+    }
+
+    #[test]
+    fn test_simulates_eleventh_rock() {
+
+        let mut simulation = Simulation::from_string(get_example_input());
+        simulation.step_until_before_the_nth_rock(11);
+
+        assert_eq!(simulation.get_height(), 17);
+
+        simulation.step_until_rock_lands();
+        assert_eq!(simulation.get_height(), 18);
+
     }
 
     #[test]
