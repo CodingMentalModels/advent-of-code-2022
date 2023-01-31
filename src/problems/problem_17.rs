@@ -34,7 +34,7 @@ struct Simulation {
     simulation_phase: SimulationPhase,
     falling_rock: Rock,
     next_jet_pattern_idx: usize,
-    occupied_squares: OccupiedSquares,
+    occupied_squares_on_surface: OccupiedSquares,
 }
 
 impl Simulation {
@@ -48,7 +48,7 @@ impl Simulation {
             simulation_phase: SimulationPhase::NewRock,
             falling_rock: initial_rock,
             next_jet_pattern_idx: 0,
-            occupied_squares: OccupiedSquares::default(),
+            occupied_squares_on_surface: OccupiedSquares::default(),
         }
     }
 
@@ -85,8 +85,8 @@ impl Simulation {
         }
     }
 
-    pub fn get_occupied_squares(&self) -> &OccupiedSquares {
-        &self.occupied_squares
+    pub fn get_occupied_squares_on_surface(&self) -> &OccupiedSquares {
+        &self.occupied_squares_on_surface
     }
 
     pub fn get_period(&mut self) -> Option<Time> {
@@ -103,18 +103,18 @@ impl Simulation {
     }
 
     pub fn is_flat(&self) -> bool {
-        if self.occupied_squares.is_empty() {
+        if self.occupied_squares_on_surface.is_empty() {
             return true;
         }
-        let max_y = self.occupied_squares.get_max_y();
-        (0..WIDTH).into_iter().all(|x| self.occupied_squares.contains(Vec2::new(x as i32, max_y as i32)))
+        let max_y = self.occupied_squares_on_surface.get_max_y();
+        (0..WIDTH).into_iter().all(|x| self.occupied_squares_on_surface.contains(Vec2::new(x as i32, max_y as i32)))
     }
 
     pub fn get_height(&self) -> usize {
-        if self.occupied_squares.is_empty() {
+        if self.occupied_squares_on_surface.is_empty() {
             return 0;
         }
-        self.occupied_squares.get_max_y() + 1
+        self.occupied_squares_on_surface.get_max_y() + 1
     }
 
     pub fn step_until_before_the_nth_rock(&mut self, n: usize) {
@@ -152,7 +152,7 @@ impl Simulation {
             },
             SimulationPhase::HandleFall(rock_position) => {
                 if self.falling_rock_has_landed() {
-                    self.occupied_squares = self.occupied_squares.union(&self.falling_rock.get_stone_positions(rock_position));
+                    self.occupied_squares_on_surface = self.occupied_squares_on_surface.union(&self.falling_rock.get_stone_positions_at_surface(rock_position));
                     self.simulation_phase = SimulationPhase::NewRock;
                 } else {
                     let new_position = self.get_movement_effect(Direction::Down);
@@ -178,7 +178,7 @@ impl Simulation {
         if direction == Direction::Down {
             if original_position.y() == 0 {
                 return original_position;
-            } else if self.falling_rock.get_stone_positions(potential_new_position).is_disjoint(&self.occupied_squares) {
+            } else if self.falling_rock.get_stone_positions_at_surface(potential_new_position).is_disjoint(&self.occupied_squares_on_surface) {
                 return potential_new_position;
             } else {
                 return original_position;
@@ -189,9 +189,9 @@ impl Simulation {
             return original_position;
         } 
 
-        let rock_squares = self.falling_rock.get_stone_positions(potential_new_position);
+        let rock_squares = self.falling_rock.get_stone_positions_at_surface(potential_new_position);
 
-        if !rock_squares.is_disjoint(&self.occupied_squares) {
+        if !rock_squares.is_disjoint(&self.occupied_squares_on_surface) {
             return original_position;
         } else {
             return potential_new_position;
@@ -269,13 +269,13 @@ impl Rock {
         (rock_position.x() < 0) || (rock_position.x() + self.get_width() as i32 > WIDTH as i32)
     }
 
-    pub fn get_stone_positions(&self, rock_position: Vec2) -> OccupiedSquares {
+    pub fn get_stone_positions_at_surface(&self, rock_position: Vec2) -> OccupiedSquares {
         assert!(!self.rock_would_collide_with_wall(rock_position));
-        self.get_relative_stone_positions().shift(rock_position)
+        self.get_relative_stone_positions().shift(rock_position).get_surface()
     }
 
     pub fn get_relative_stone_positions(&self) -> OccupiedSquares {
-        OccupiedSquares::new(Self::get_relative_stone_positions_as_vecs(self))
+        OccupiedSquares::new_unchecked(Self::get_relative_stone_positions_as_vecs(self))
     }
 
     fn get_relative_stone_positions_as_vecs(&self) -> HashSet<Vec2> {
@@ -328,8 +328,7 @@ impl OccupiedSquares {
     }
 
     pub fn new(vecs: HashSet<Vec2>) -> Self {
-        Self::new_unchecked(vecs)
-        // Self(vecs).get_surface()
+        Self(vecs).get_surface()
     }
 
     pub fn len(&self) -> usize {
@@ -353,11 +352,11 @@ impl OccupiedSquares {
     }
 
     pub fn intersect(&self, other: &Self) -> Self {
-        Self(self.0.intersection(&other.0).cloned().collect())
+        Self::new(self.0.intersection(&other.0).cloned().collect())
     }
 
     pub fn union(&self, other: &Self) -> Self {
-        Self(self.0.union(&other.0).cloned().collect())
+        Self::new(self.0.union(&other.0).cloned().collect())
     }
 
     pub fn get_max_y(&self) -> usize {
@@ -365,77 +364,38 @@ impl OccupiedSquares {
     }
 
     pub fn shift(&self, delta_v: Vec2) -> Self {
-        Self::new(self.0.iter().map(|v| v.clone() + delta_v).collect())
+        Self::new_unchecked(self.0.iter().map(|v| v.clone() + delta_v).collect())
     }
 
     fn get_surface(&self) -> Self {
         let mut to_return = HashSet::new();
-        let mut surface_element = self.0.iter()
-            .filter(|v| v.x() == 0)
-            .map(|v| v.y()).max()
-            .map(|max_y| Vec2::new(0, max_y));
-        let mut x = 0;
-        while x < WIDTH {
-            if surface_element.is_some() {
-                to_return.insert(surface_element.unwrap().clone());
-            }
-            let (next_x, next_surface_element) = self.get_next_surface_element(x, surface_element);
-            x = next_x;
-            surface_element = next_surface_element;
-        }
-        return Self::new_unchecked(to_return);
-    }
-
-    fn get_next_surface_element(&self, x: usize, surface_element: Option<Vec2>) -> (usize, Option<Vec2>) {
-        if surface_element.is_some() {
-            assert_eq!(surface_element.unwrap().x(), x as i32);
-        }
-        let y_plus_one = surface_element.map(|v| v.y() + 1).unwrap_or(0);
-
-        let above = Vec2::new(x as i32, y_plus_one);
-        let above_and_left = above - Vec2::i();
-        if self.contains(above_and_left) {
-            return (above_and_left.x() as usize, Some(above_and_left));
-        }
-
-        if self.contains(above) {
-            return (x, Some(above));
-        }
-
-        let above_and_right = above + Vec2::i();
-        if self.contains(above_and_right) {
-            return (x + 1, Some(above_and_right));
-        }
-
-        if surface_element.is_none() {
-            return (x + 1, None)
-        }
         
-        let v = surface_element.unwrap();
-
-        let right = v + Vec2::i();
-        if self.contains(right) {
-            return (x + 1, Some(right));
-        }
-
-        let mut right_and_down = right - Vec2::j();
-        while right_and_down.y() >= 0 {
-            if self.contains(right_and_down) {
-                return (x + 1, Some(right_and_down))
+        let mut y = self.get_max_y() as i32;
+        let mut x_found: HashSet<i32> = HashSet::new();
+        while y >= 0 {
+            let squares_at_y = self.0.iter().filter(|v| v.y() == y).collect::<HashSet<_>>();
+            for v in squares_at_y.clone() {
+                let bounded_left = v.x() == 0 || squares_at_y.contains(&(*v - Vec2::i()));
+                let bounded_top = to_return.contains(&(*v + Vec2::j()));
+                let bounded_right = v.x() == (WIDTH as i32 - 1) || squares_at_y.contains(&(*v + Vec2::i()));
+                if !(bounded_left && bounded_top && bounded_right) {
+                    to_return.insert(*v);
+                    x_found.insert(v.x());
+                }
             }
-            right_and_down = right_and_down - Vec2::j();
+            if x_found.len() == WIDTH {
+                return Self::new_unchecked(to_return);
+            }
+            y -= 1;
         }
 
-        return (x + 1, None);
-
+        return Self::new_unchecked(to_return);
     }
 
 }
 
 #[cfg(test)]
 mod test_problem_17 {
-
-    use std::iter;
 
     use super::*;
 
@@ -471,6 +431,107 @@ mod test_problem_17 {
         let mut simulation = Simulation::from_string(get_example_input());
 
         assert_eq!(simulation.get_period(), Some(0));
+    }
+
+    #[test]
+    fn test_gets_surface_in_simulation() {
+
+        let mut simulation = Simulation::from_string(get_example_input());
+
+        assert!(simulation.get_occupied_squares_on_surface().is_empty());
+
+        simulation.step_until_rock_lands();
+        assert_eq!(
+            simulation.get_occupied_squares_on_surface().clone(),
+            OccupiedSquares::new(vec![Vec2::new(2, 0), Vec2::new(3, 0), Vec2::new(4, 0), Vec2::new(5, 0)].into_iter().collect())
+        );
+
+        simulation.falling_rock = Rock::Minus;
+        simulation.simulation_phase = SimulationPhase::HandleFall(Vec2::new(0, 1));
+        simulation.step_until_rock_lands();
+        assert_eq!(
+            simulation.get_occupied_squares_on_surface().clone(),
+            OccupiedSquares::new(
+                vec![Vec2::new(0, 1), Vec2::new(1, 1), Vec2::new(2, 0), Vec2::new(2, 1), Vec2::new(3, 1), Vec2::new(4, 0), Vec2::new(5, 0)].into_iter().collect()
+            )
+        );
+        
+    }
+
+    #[test]
+    fn test_gets_surface_when_saturated() {
+        let saturated_squares = (0..7).into_iter()
+            .map(|x| Rock::Bar.get_stone_positions_at_surface(Vec2::new(x, 0)))
+            .reduce(|acc, elt| acc.union(&elt)).unwrap();
+
+        assert_eq!(saturated_squares, OccupiedSquares::new_unchecked((0..7).into_iter().map(|x| Vec2::new(x, 3)).collect()))
+    }
+
+    #[test]
+    fn test_gets_surface_at_left_wall() {
+        
+        let squares = Rock::Minus.get_relative_stone_positions().get_surface();
+        assert_eq!(squares, OccupiedSquares::new_unchecked(Rock::Minus.get_relative_stone_positions_as_vecs()));
+
+        let squares = Rock::Plus.get_relative_stone_positions().get_surface();
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Plus.get_relative_stone_positions_as_vecs()
+            .difference(
+                &vec![Vec2::new(1, 1)].into_iter().collect::<HashSet<_>>()
+            ).cloned().collect::<HashSet<_>>()
+        ));
+
+        let squares = Rock::BackwardsL.get_relative_stone_positions().get_surface();
+        assert_eq!(squares, OccupiedSquares::new_unchecked(Rock::BackwardsL.get_relative_stone_positions_as_vecs()));
+
+        let squares = Rock::Bar.get_relative_stone_positions().get_surface();
+        assert_eq!(squares, OccupiedSquares::new_unchecked(Rock::Bar.get_relative_stone_positions_as_vecs()));
+
+        let squares = Rock::Square.get_relative_stone_positions().get_surface();
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Square.get_relative_stone_positions_as_vecs()
+            .difference(
+                &vec![Vec2::new(0, 0)].into_iter().collect::<HashSet<_>>()
+            ).cloned().collect::<HashSet<_>>()
+        ));
+
+    }
+
+    #[test]
+    fn test_gets_surface_in_the_middle() {
+        
+        let squares = Rock::Plus.get_stone_positions_at_surface(Vec2::new(3, 0));
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Plus.get_relative_stone_positions_as_vecs()
+            .difference(
+                &vec![Vec2::new(1, 1)].into_iter().collect::<HashSet<_>>()
+            ).cloned().into_iter().map(|v| v + Vec2::new(3, 0)).collect::<HashSet<_>>()
+        ));
+
+        let squares = Rock::Square.get_stone_positions_at_surface(Vec2::new(1, 0));
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Square.get_relative_stone_positions_as_vecs().into_iter().map(|v| v + Vec2::new(1, 0)).collect()
+        ));
+    }
+
+    #[test]
+    fn test_gets_surface_at_right_wall() {
+        
+        let squares = Rock::Plus.get_stone_positions_at_surface(Vec2::new(4, 0));
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Plus.get_relative_stone_positions_as_vecs()
+            .difference(
+                &vec![Vec2::new(1, 1)].into_iter().collect::<HashSet<_>>()
+            ).cloned().into_iter().map(|v| v + Vec2::new(4, 0)).collect::<HashSet<_>>()
+        ));
+
+        let squares = Rock::Square.get_stone_positions_at_surface(Vec2::new(5, 0));
+        assert_eq!(squares, OccupiedSquares::new_unchecked(
+            Rock::Square.get_relative_stone_positions_as_vecs()
+            .difference(
+                &vec![Vec2::new(1, 0)].into_iter().collect::<HashSet<_>>()
+            ).cloned().into_iter().map(|v| v + Vec2::new(5, 0)).collect::<HashSet<_>>()
+        ));
     }
 
     #[test]
@@ -527,7 +588,7 @@ mod test_problem_17 {
         assert_eq!(simulation.get_n_rocks_fallen(), 1);
         assert_eq!(simulation.get_falling_rock_position(), None);
         assert_eq!(
-            simulation.get_occupied_squares().clone(),
+            simulation.get_occupied_squares_on_surface().clone(),
             OccupiedSquares::new(vec![Vec2::new(2, 0), Vec2::new(3, 0), Vec2::new(4, 0), Vec2::new(5, 0)].into_iter().collect())
         );
         assert_eq!(simulation.get_time_elapsed(), 9);
@@ -545,13 +606,35 @@ mod test_problem_17 {
         simulation.step_until_rock_lands();
         
         assert_eq!(simulation.get_n_rocks_fallen(), 2);
-        assert_eq!(simulation.get_occupied_squares().len(), 9, "{:?}", simulation.get_occupied_squares());
-        assert!(simulation.get_occupied_squares().contains(Vec2::new(3, 3)));
-        assert!(!simulation.get_occupied_squares().contains(Vec2::new(2, 1)));
-        assert!(!simulation.get_occupied_squares().contains(Vec2::new(2, 3)));
+        // Note that the number of occupied squares on the surface is two less than the nine squares that have fallen.
+        assert_eq!(simulation.get_occupied_squares_on_surface().len(), 7, "{:?}", simulation.get_occupied_squares_on_surface());
+        assert!(simulation.get_occupied_squares_on_surface().contains(Vec2::new(3, 3)));
+        assert!(!simulation.get_occupied_squares_on_surface().contains(Vec2::new(2, 1)));
+        assert!(!simulation.get_occupied_squares_on_surface().contains(Vec2::new(2, 3)));
         assert_eq!(simulation.get_falling_rock_type(), None);
         assert_eq!(simulation.get_height(), 4);
 
+        simulation.step_until_rock_lands();
+
+        assert_eq!(simulation.get_n_rocks_fallen(), 3);
+        // Potential issue here as the surface includes blocks that are in "holes"
+        assert_eq!(simulation.get_occupied_squares_on_surface().len(), 11, "{:?}", simulation.get_occupied_squares_on_surface());
+        assert_eq!(simulation.get_height(), 6);
+
+        simulation.step_until_rock_lands();
+
+        assert_eq!(simulation.get_n_rocks_fallen(), 4);
+        assert_eq!(simulation.get_height(), 7);
+
+        simulation.step_until_rock_lands();
+
+        assert_eq!(simulation.get_n_rocks_fallen(), 5);
+        assert_eq!(simulation.get_height(), 9);
+
+        simulation.step_until_rock_lands();
+
+        assert_eq!(simulation.get_n_rocks_fallen(), 6);
+        assert_eq!(simulation.get_height(), 10);
     }
 
     #[test]
@@ -559,7 +642,7 @@ mod test_problem_17 {
 
         let mut simulation = Simulation::from_string(get_example_input());
 
-        simulation.occupied_squares = OccupiedSquares::new(vec![
+        simulation.occupied_squares_on_surface = OccupiedSquares::new(vec![
             Vec2::new(3, 0),
             Vec2::new(3, 1),
             Vec2::new(3, 2),
