@@ -1,4 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::iter::Repeat;
 
 use crate::input::input::InputParser;
@@ -15,11 +17,18 @@ pub fn solve_problem_17a(input: String) -> usize {
 
 fn solve_problem_17b(input: String) -> usize {
 
+    let target_rock = 1_000_000_000_000;
+    let mut simulation = Simulation::from_string(input.clone());
+    let (period_start_time, period, height_difference) = simulation.get_period_start_period_and_height_difference().unwrap();
+    let n_rocks_after_period_start = target_rock - period_start_time;
+    let remainder = n_rocks_after_period_start % period;
+    let quotient = (n_rocks_after_period_start - remainder) / period;
+    let height_from_cycles = quotient * height_difference;
+
     let mut simulation = Simulation::from_string(input);
-    simulation.step_until_before_the_nth_rock(1_000_000_000_001);
+    simulation.step_until_before_the_nth_rock(period_start_time + remainder + 1);
 
-    simulation.get_height()
-
+    simulation.get_height() + height_from_cycles
 }
 
 type Time = usize;
@@ -90,17 +99,21 @@ impl Simulation {
         &self.occupied_squares_on_surface
     }
 
-    pub fn get_period(&mut self) -> Option<Time> {
+    pub fn get_period_start_period_and_height_difference(&mut self) -> Option<(Time, Time, usize)> {
         let mut counter = 0;
-        while self.get_n_rocks_fallen() == 0 || !self.is_flat() || self.falling_rock != Rock::Minus || self.next_jet_pattern_idx != 0 {
-            if counter > MAX_PERIOD {
-                return None;
+        let mut seen = HashMap::new();
+        while counter < MAX_PERIOD {
+            let key = (self.falling_rock, self.next_jet_pattern_idx, self.occupied_squares_on_surface.get_signature());
+            if seen.contains_key(&key) {
+                let (prior_time, prior_height) = seen.get(&key).unwrap();
+                return Some((*prior_time, self.get_n_rocks_fallen() - prior_time, self.get_height() - prior_height));
             }
+            seen.insert(key, (self.get_n_rocks_fallen(), self.get_height()));
             self.step_until_rock_lands();
             counter += 1;
         }
 
-        return Some(self.get_time_elapsed());
+        return None;
     }
 
     pub fn is_flat(&self) -> bool {
@@ -372,6 +385,15 @@ impl OccupiedSquares {
         Self::new_unchecked(self.0.iter().map(|v| v.clone() + delta_v).collect())
     }
 
+    fn get_signature(&self) -> u64 {
+        let max_height = self.get_max_y();
+        let mut relative_heights = self.0.iter().map(|v| *v - Vec2::new(0, max_height as i32)).collect::<Vec<Vec2>>();
+        relative_heights.sort_unstable();
+        let mut hasher = DefaultHasher::new();
+        relative_heights.hash(&mut hasher);
+        hasher.finish()
+    }
+
     fn get_surface(&self) -> Self {
         let mut to_return = HashSet::new();
         
@@ -427,7 +449,7 @@ mod test_problem_17 {
         let input = InputParser::new().parse_to_single_string("input_17.txt").unwrap();
 
         let answer = solve_problem_17b(input);
-        assert_eq!(answer, 0);
+        assert_eq!(answer, 1575811209487);
     }
 
     #[test]
@@ -435,7 +457,7 @@ mod test_problem_17 {
 
         let mut simulation = Simulation::from_string(get_example_input());
 
-        assert_eq!(simulation.get_period(), Some(0));
+        assert_eq!(simulation.get_period_start_period_and_height_difference(), Some((28, 35, 53)));
     }
 
     #[test]
